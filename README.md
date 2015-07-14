@@ -33,7 +33,7 @@ switch.p4 program in the p4factory repository.
 The switchlink library listens to NETLINK messages only on 'swp' interfaces.
 The 'swp' interfaces are TUNTAP interfaces that represent the softswitch's
 physical ports. Each 'swp' interface is mapped to a physical port (see
-src/switchlink_db.c) Applications (bridge-utils, mstpd, iputils, Quagga, etc.)
+src/switchlink_db.c). Applications (bridge-utils, mstpd, iputils, Quagga, etc.)
 interact with the softswitch via the 'swp' interfaces. Users can use native
 Linux tools to configure the 'swp' interfaces.
 
@@ -94,7 +94,7 @@ Supported Features
 ------------------
 
 1. Basic L2 switching
-2. Basic L3 Routing: IPv4, IPv6
+2. Basic L3 Routing: IPv4
 3. L2 protocol integration (mstpd)
 4. L3 protocol integration (Quagga)
 5. ECMP
@@ -102,4 +102,5 @@ Supported Features
 Upcoming Features
 -----------------
 1. L2: Learning and aging
-2. LAG
+2. IPv6
+3. LAG
