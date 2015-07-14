@@ -14,17 +14,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-#ifndef __SWITCHLINK_INT_H__
-#define __SWITCHLINK_INT_H__
+#ifndef __SWITCHLINK_PACKET_H__
+#define __SWITCHLINK_PACKET_H__
 
-extern void switchlink_db_init();
-extern void switchlink_api_init();
-extern void switchlink_link_init();
-extern void switchlink_packet_driver_init();
+extern void
+switchlink_packet_from_hardware(const void *buf, uint32_t buf_size,
+                                uint16_t port_id);
 
-extern void process_link_msg(struct nlmsghdr *nlmsg, int type);
-extern void process_neigh_msg(struct nlmsghdr *nlmsg, int type);
-extern void process_address_msg(struct nlmsghdr *nlmsg, int type);
-extern void process_route_msg(struct nlmsghdr *nlmsg, int type);
-
-#endif /* __SWITCHLINK_INT_H__ */
+#endif /* __SWITCH_PACKET_H__ */

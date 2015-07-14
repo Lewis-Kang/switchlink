@@ -93,4 +93,7 @@ switchlink_route_create(switchlink_db_route_info_t *route_info);
 extern int
 switchlink_route_delete(switchlink_db_route_info_t *route_info);
 
+extern int
+switchlink_send_packet(char *buf, uint32_t buf_size, uint16_t port_id);
+
 #endif /* __SWITCHLINK_SAI_H__ */

@@ -24,9 +24,14 @@ limitations under the License.
 #include "switchlink.h"
 #include "switchlink_link.h"
 #include "switchlink_neigh.h"
+#include "switchlink_packet.h"
 #include "switchlink_db.h"
 
 extern void sai_initialize();
+extern sai_status_t sai_create_hostif_trap(sai_hostif_trap_id_t hostif_trapid,
+                                           uint32_t attr_count,
+                                           const sai_attribute_t *attr_list);
+
 static sai_switch_api_t                 *switch_api = NULL;
 static sai_virtual_router_api_t         *vrf_api = NULL;
 static sai_vlan_api_t                   *vlan_api = NULL;
@@ -37,6 +42,7 @@ static sai_neighbor_api_t               *neigh_api = NULL;
 static sai_next_hop_api_t               *nhop_api = NULL;
 static sai_next_hop_group_api_t         *nhop_group_api = NULL;
 static sai_route_api_t                  *route_api = NULL;
+static sai_hostif_api_t                 *host_intf_api = NULL;
 static sai_object_id_t                  *s_port_list = NULL;
 static uint16_t                          s_max_ports = 0;
 
@@ -81,6 +87,80 @@ get_port_list() {
                                                        s_max_ports);
     port_attr.value.objlist.list = s_port_list;
     status = switch_api->get_switch_attribute(1, &port_attr);
+    assert(status == SAI_STATUS_SUCCESS);
+}
+
+static int
+port_handle_to_port_id(switchlink_handle_t port_h, uint16_t *port_id) {
+    int i;
+    for (i = 0; i < s_max_ports; i++) {
+        if (s_port_list[i] == port_h) {
+            *port_id = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static void
+on_packet_event(const void *buf, sai_size_t buf_size, uint32_t attr_count,
+                const sai_attribute_t *attr_list) {
+    int i, ret;
+    uint16_t port_id;
+    switchlink_handle_t port_h = 0;
+
+    for (i = 0; i < attr_count; i++, attr_list++) {
+        switch (attr_list->id) {
+            case SAI_HOSTIF_PACKET_INGRESS_PORT:
+                port_h = attr_list->value.oid;
+                break;
+            default:
+                break;
+        }
+    }
+    if (port_h == 0) {
+        return;
+    }
+
+    ret = port_handle_to_port_id(port_h, &port_id);
+    if (ret == -1) {
+        return;
+    }
+    switchlink_packet_from_hardware(buf, buf_size, port_id);
+}
+
+static void
+init_packet_handler() {
+    sai_switch_notification_t switch_notifications;
+    sai_status_t status = SAI_STATUS_SUCCESS;
+    sai_attribute_t attr_list[3];
+
+    memset(&switch_notifications, 0, sizeof(switch_notifications));
+    switch_notifications.on_packet_event = on_packet_event;
+    status = switch_api->initialize_switch(0, NULL, NULL,
+                                           &switch_notifications);
+    assert(status == SAI_STATUS_SUCCESS);
+
+    // STP, redirect to CPU
+    memset(attr_list, 0, sizeof(attr_list));
+    attr_list[0].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr_list[0].value.u32 = SAI_PACKET_ACTION_TRAP;
+    attr_list[1].id = SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY;
+    attr_list[1].value.u32 = 1;
+    attr_list[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL;
+    attr_list[2].value.u32 = SAI_HOSTIF_TRAP_CHANNEL_CB;
+    status = sai_create_hostif_trap(SAI_HOSTIF_TRAP_ID_STP, 3, attr_list);
+    assert(status == SAI_STATUS_SUCCESS);
+
+    // OSPF, copy to CPU
+    memset(attr_list, 0, sizeof(attr_list));
+    attr_list[0].id = SAI_HOSTIF_TRAP_ATTR_PACKET_ACTION;
+    attr_list[0].value.u32 = SAI_PACKET_ACTION_LOG;
+    attr_list[1].id = SAI_HOSTIF_TRAP_ATTR_TRAP_PRIORITY;
+    attr_list[1].value.u32 = 101;
+    attr_list[2].id = SAI_HOSTIF_TRAP_ATTR_TRAP_CHANNEL;
+    attr_list[2].value.u32 = SAI_HOSTIF_TRAP_CHANNEL_CB;
+    status = sai_create_hostif_trap(SAI_HOSTIF_TRAP_ID_OSPF, 3, attr_list);
     assert(status == SAI_STATUS_SUCCESS);
 }
 
@@ -158,8 +238,7 @@ get_sai_stp_state(switchlink_stp_state_t switchlink_stp_state) {
 int
 switchlink_stp_state_update(switchlink_db_interface_info_t *intf) {
     sai_status_t status = SAI_STATUS_SUCCESS;
-    status = stp_api->set_stp_port_state(intf->stp_h,
-                                         s_port_list[intf->port_id],
+    status = stp_api->set_stp_port_state(intf->stp_h, intf->intf_h,
                                          get_sai_stp_state(intf->stp_state));
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
 }
@@ -439,6 +518,21 @@ switchlink_route_delete(switchlink_db_route_info_t *route_info) {
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
 }
 
+int
+switchlink_send_packet(char *buf, uint32_t buf_size, uint16_t port_id) {
+    sai_status_t status = SAI_STATUS_SUCCESS;
+
+    sai_attribute_t attr_list[2];
+    memset(attr_list, 0, sizeof(attr_list));
+    attr_list[0].id = SAI_HOSTIF_PACKET_TX_TYPE;
+    attr_list[0].value.u32 = SAI_HOSTIF_TX_TYPE_PIPELINE_BYPASS;
+    attr_list[1].id = SAI_HOSTIF_PACKET_EGRESS_PORT_OR_LAG;
+    attr_list[1].value.oid = s_port_list[port_id];
+
+    status = host_intf_api->send_packet(0, buf, buf_size, 2, attr_list);
+    return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
+}
+
 void
 switchlink_api_init() {
     sai_status_t status = SAI_STATUS_SUCCESS;
@@ -465,6 +559,9 @@ switchlink_api_init() {
     assert(status == SAI_STATUS_SUCCESS);
     status = sai_api_query(SAI_API_ROUTE, (void **)&route_api);
     assert(status == SAI_STATUS_SUCCESS);
+    status = sai_api_query(SAI_API_HOST_INTERFACE, (void **)&host_intf_api);
+    assert(status == SAI_STATUS_SUCCESS);
 
+    init_packet_handler();
     get_port_list();
 }

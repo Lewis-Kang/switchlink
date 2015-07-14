@@ -85,7 +85,12 @@ process_address_msg(struct nlmsghdr *nlmsg, int type) {
 
     if (type == RTM_NEWADDR) {
         if (ifinfo.intf_type != SWITCHLINK_INTF_TYPE_L3) {
-            interface_change_type(addrmsg->ifa_index, SWITCHLINK_INTF_TYPE_L3);
+            if ((addrmsg->ifa_family == AF_INET) ||
+                ((addrmsg->ifa_family == AF_INET6) &&
+                !IN6_IS_ADDR_LINKLOCAL(&(addr.ip.v6addr)))) {
+                interface_change_type(addrmsg->ifa_index,
+                                      SWITCHLINK_INTF_TYPE_L3);
+            }
         }
         if (addr_valid) {
             switchlink_ip_addr_t null_gateway;

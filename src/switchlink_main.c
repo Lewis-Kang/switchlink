@@ -206,6 +206,7 @@ switchlink_main(void *args) {
     switchlink_db_init();
     switchlink_api_init();
     switchlink_link_init();
+    switchlink_packet_driver_init();
 
     process_nl_event_loop();
     cleanup_nl_sock();

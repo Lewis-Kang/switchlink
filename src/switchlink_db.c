@@ -57,6 +57,16 @@ switchlink_db_handle_get_obj(switchlink_handle_t h) {
 }
 
 switchlink_db_status_t
+switchlink_db_port_get_all_ports(uint16_t *num_ports,
+                                 switchlink_db_port_obj_t **port_map) {
+    *num_ports =
+        sizeof(switchlink_db_port_map)/sizeof(switchlink_db_port_obj_t);
+    *port_map = switchlink_malloc(sizeof(switchlink_db_port_obj_t), *num_ports);
+    memcpy(*port_map, switchlink_db_port_map, sizeof(switchlink_db_port_map));
+    return SWITCHLINK_DB_STATUS_SUCCESS;
+}
+
+switchlink_db_status_t
 switchlink_db_port_get(char *name, uint16_t *port_id) {
     int i;
     for(i = 0;

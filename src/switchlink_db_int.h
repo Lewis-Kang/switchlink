@@ -34,11 +34,6 @@ typedef struct switchlink_db_bridge_obj_ {
     switchlink_db_bridge_info_t bridge;
 } switchlink_db_bridge_obj_t;
 
-typedef struct switchlink_db_port_obj_ {
-    char * name;
-    uint16_t port_id;
-} switchlink_db_port_obj_t;
-
 typedef struct switchlink_db_mac_obj_ {
     tommy_node hash_node;
     tommy_node list_node;

@@ -138,6 +138,7 @@ interface_delete(switchlink_db_interface_info_t *intf) {
         SWITCHLINK_DB_STATUS_ITEM_NOT_FOUND) {
         return;
     }
+    intf->intf_h = ifinfo.intf_h;
 
     // remove the interface from bridge
     if (ifinfo.bridge_h) {
@@ -228,24 +229,6 @@ convert_stp_state(uint8_t linux_stp_state) {
 }
 
 static switchlink_stp_state_t
-process_protocol_link_info(struct nlattr *attr, int attrlen) {
-    switchlink_stp_state_t stp_state = SWITCHLINK_STP_STATE_NONE;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
-    struct nlattr *nest_attr;
-    nla_for_each_nested(nest_attr, attr, attrlen) {
-        switch(nla_type(nest_attr)) {
-            case IFLA_BRPORT_STATE:
-                stp_state = convert_stp_state(nla_get_u8(nest_attr));
-                break;
-            default:
-                break;
-        }
-    }
-#endif /* LINUX_VERSION_CODE */
-    return stp_state;
-}
-
-static switchlink_stp_state_t
 get_stp_state(char *link_name) {
     switchlink_stp_state_t stp_state = SWITCHLINK_STP_STATE_NONE;
     char path[128];
@@ -291,7 +274,7 @@ process_link_msg(struct nlmsghdr *nlmsg, int type) {
     uint32_t master = 0;
     bool mac_addr_valid = false;
     bool prot_info_valid = false;
-    int nest_attrlen, nest_attr_type;
+    int nest_attr_type;
     switchlink_db_interface_info_t intf_info;
     switchlink_link_type_t link_type = SWITCHLINK_LINK_TYPE_NONE;
     switchlink_stp_state_t stp_state;
@@ -317,8 +300,7 @@ process_link_msg(struct nlmsghdr *nlmsg, int type) {
                         SWITCHLINK_INTERFACE_NAME_LEN_MAX);
                 break;
             case IFLA_LINKINFO:
-                nest_attrlen = nla_len(attr);
-                nla_for_each_nested(nest_attr, attr, nest_attrlen) {
+                nla_for_each_nested(nest_attr, attr, attrlen) {
                     nest_attr_type = nla_type(nest_attr);
                     switch (nest_attr_type) {
                         case IFLA_INFO_KIND:
@@ -341,8 +323,17 @@ process_link_msg(struct nlmsghdr *nlmsg, int type) {
                 master = nla_get_u32(attr);
                 break;
             case IFLA_PROTINFO:
-                stp_state = process_protocol_link_info(attr, attrlen);
                 prot_info_valid = true;
+                link_type = SWITCHLINK_LINK_TYPE_ETH;
+                nla_for_each_nested(nest_attr, attr, attrlen) {
+                    switch(nla_type(nest_attr)) {
+                        case IFLA_BRPORT_STATE:
+                            stp_state = convert_stp_state(nla_get_u8(nest_attr));
+                            break;
+                        default:
+                            break;
+                    }
+                }
                 break;
             case IFLA_AF_SPEC:
                 break;

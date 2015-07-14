@@ -26,6 +26,11 @@ typedef enum {
     SWITCHLINK_DB_STATUS_ITEM_NOT_FOUND,
 } switchlink_db_status_t;
 
+typedef struct switchlink_db_port_obj_ {
+    char * name;
+    uint16_t port_id;
+} switchlink_db_port_obj_t;
+
 typedef struct switchlink_db_interface_info_ {
     char ifname[SWITCHLINK_INTERFACE_NAME_LEN_MAX];
     uint32_t ifindex;
@@ -72,6 +77,10 @@ typedef struct switchlink_db_route_info_ {
 /*** port ***/
 extern switchlink_db_status_t
 switchlink_db_port_get(char *name, uint16_t *port_id);
+
+extern switchlink_db_status_t
+switchlink_db_port_get_all_ports(uint16_t *num_ports,
+                                 switchlink_db_port_obj_t **port_map);
 
 /*** interface ***/
 extern switchlink_db_status_t
