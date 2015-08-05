@@ -78,11 +78,6 @@ interface_create(switchlink_db_interface_info_t *intf)
             }
         }
 
-        // add router mac if interface is L3
-        if (intf->intf_type == SWITCHLINK_INTF_TYPE_L3) {
-            switchlink_router_mac_add(intf->mac_addr, &(intf->rmac_h));
-        }
-
         status = switchlink_interface_create(intf, &(intf->intf_h));
         if (status != SWITCHLINK_DB_STATUS_SUCCESS) {
             NL_LOG_ERROR(("newlink: switchlink_interface_create failed\n"));
@@ -241,7 +236,7 @@ get_stp_state(char *link_name) {
     }
 
     if (read(fd, &linux_stp_state, sizeof(linux_stp_state)) <
-        sizeof(linux_stp_state)) {
+        (int)sizeof(linux_stp_state)) {
         close(fd);
         return stp_state;
     }

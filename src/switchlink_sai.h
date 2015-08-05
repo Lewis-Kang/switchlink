@@ -57,10 +57,6 @@ extern int
 switchlink_lag_create(switchlink_handle_t *lag_h);
 
 extern int
-switchlink_router_mac_add(switchlink_mac_addr_t mac_addr,
-                          switchlink_handle_t *rmac_h);
-
-extern int
 switchlink_mac_create(switchlink_mac_addr_t mac_addr,
                       switchlink_handle_t bridge_h,
                       switchlink_handle_t intf_h);

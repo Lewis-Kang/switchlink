@@ -44,6 +44,7 @@ static sai_next_hop_group_api_t         *nhop_group_api = NULL;
 static sai_route_api_t                  *route_api = NULL;
 static sai_hostif_api_t                 *host_intf_api = NULL;
 static sai_object_id_t                  *s_port_list = NULL;
+static sai_object_id_t                   s_cpu_port;
 static uint16_t                          s_max_ports = 0;
 
 static inline uint32_t
@@ -76,6 +77,12 @@ get_port_list() {
     sai_attribute_t port_attr;
 
     memset(&port_attr, 0, sizeof(port_attr));
+    port_attr.id = SAI_SWITCH_ATTR_CPU_PORT;
+    status = switch_api->get_switch_attribute(1, &port_attr);
+    assert(status == SAI_STATUS_SUCCESS);
+    s_cpu_port = port_attr.value.oid;
+
+    memset(&port_attr, 0, sizeof(port_attr));
     port_attr.id = SAI_SWITCH_ATTR_PORT_NUMBER;
     status = switch_api->get_switch_attribute(1, &port_attr);
     assert(status == SAI_STATUS_SUCCESS);
@@ -88,6 +95,15 @@ get_port_list() {
     port_attr.value.objlist.list = s_port_list;
     status = switch_api->get_switch_attribute(1, &port_attr);
     assert(status == SAI_STATUS_SUCCESS);
+}
+
+static sai_object_id_t
+get_port_object(uint16_t port_id) {
+    if (port_id > s_max_ports) {
+        return s_cpu_port;
+    } else {
+        return s_port_list[port_id];
+    }
 }
 
 static int
@@ -105,7 +121,8 @@ port_handle_to_port_id(switchlink_handle_t port_h, uint16_t *port_id) {
 static void
 on_packet_event(const void *buf, sai_size_t buf_size, uint32_t attr_count,
                 const sai_attribute_t *attr_list) {
-    int i, ret;
+    int ret;
+    uint32_t i;
     uint16_t port_id;
     switchlink_handle_t port_h = 0;
 
@@ -185,21 +202,23 @@ switchlink_interface_create(switchlink_db_interface_info_t *intf,
     sai_status_t status = SAI_STATUS_SUCCESS;
 
     if (intf->intf_type == SWITCHLINK_INTF_TYPE_L2_ACCESS) {
-        *intf_h = s_port_list[intf->port_id];
+        *intf_h = get_port_object(intf->port_id);
     } else if (intf->intf_type == SWITCHLINK_INTF_TYPE_L3) {
-        sai_attribute_t attr_list[5];
+        sai_attribute_t attr_list[6];
         memset(attr_list, 0, sizeof(attr_list));
         attr_list[0].id = SAI_ROUTER_INTERFACE_ATTR_VIRTUAL_ROUTER_ID;
         attr_list[0].value.oid = intf->vrf_h;
         attr_list[1].id = SAI_ROUTER_INTERFACE_ATTR_TYPE;
         attr_list[1].value.u8 = SAI_ROUTER_INTERFACE_TYPE_PORT;
         attr_list[2].id = SAI_ROUTER_INTERFACE_ATTR_PORT_ID;
-        attr_list[2].value.oid = s_port_list[intf->port_id];
+        attr_list[2].value.oid = get_port_object(intf->port_id);
         attr_list[3].id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V4_STATE;
         attr_list[3].value.booldata = true;
         attr_list[4].id = SAI_ROUTER_INTERFACE_ATTR_ADMIN_V6_STATE;
         attr_list[4].value.booldata = true;
-        status = rintf_api->create_router_interface(intf_h, 5, attr_list);
+        attr_list[5].id = SAI_ROUTER_INTERFACE_ATTR_SRC_MAC_ADDRESS;
+        memcpy(attr_list[5].value.mac, intf->mac_addr, sizeof(sai_mac_t));
+        status = rintf_api->create_router_interface(intf_h, 6, attr_list);
     }
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
 }
@@ -278,7 +297,7 @@ switchlink_bridge_create(switchlink_db_bridge_info_t *bridge_db_info) {
 
     sai_attribute_t attr_list[1];
     memset(attr_list, 0, sizeof(attr_list));
-    attr_list[0].id = SAI_STP_ATTR_VLAN;
+    attr_list[0].id = SAI_STP_ATTR_VLAN_LIST;
     attr_list[0].value.vlanlist.vlan_count = 1;
     attr_list[0].value.vlanlist.vlan_list = (sai_vlan_id_t *)&vlan_id;
     status = stp_api->create_stp(&(bridge_db_info->stp_h), 1, attr_list);
@@ -318,20 +337,6 @@ switchlink_bridge_delete(switchlink_db_bridge_info_t *bridge_db_info) {
 int
 switchlink_lag_create(switchlink_handle_t *lag_h) {
     return -1;
-}
-
-int
-switchlink_router_mac_add(switchlink_mac_addr_t mac_addr,
-                          switchlink_handle_t *rmac_h) {
-    sai_status_t status = SAI_STATUS_SUCCESS;
-
-    sai_attribute_t attr_list[1];
-    memset(attr_list, 0, sizeof(attr_list));
-    attr_list[0].id = SAI_SWITCH_ATTR_SRC_MAC_ADDRESS;
-    memcpy(attr_list[0].value.mac, mac_addr, sizeof(sai_mac_t));
-
-    status = switch_api->set_switch_attribute(attr_list);
-    return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
 }
 
 int
@@ -382,7 +387,7 @@ switchlink_nexthop_create(switchlink_db_neigh_info_t *neigh_info) {
     if (neigh_info->ip_addr.family == AF_INET) {
         attr_list[1].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
         attr_list[1].value.ipaddr.addr.ip4 =
-            neigh_info->ip_addr.ip.v4addr.s_addr;
+            htonl(neigh_info->ip_addr.ip.v4addr.s_addr);
     } else {
         attr_list[1].value.ipaddr.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
         memcpy(attr_list[1].value.ipaddr.addr.ip6,
@@ -416,7 +421,7 @@ switchlink_neighbor_create(switchlink_db_neigh_info_t *neigh_info) {
     if (neigh_info->ip_addr.family == AF_INET) {
         neighbor_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
         neighbor_entry.ip_address.addr.ip4 =
-            neigh_info->ip_addr.ip.v4addr.s_addr;
+            htonl(neigh_info->ip_addr.ip.v4addr.s_addr);
     } else {
         assert(neigh_info->ip_addr.family == AF_INET6);
         neighbor_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
@@ -436,7 +441,8 @@ switchlink_neighbor_delete(switchlink_db_neigh_info_t *neigh_info) {
     memset(&neighbor_entry, 0, sizeof(neighbor_entry));
     neighbor_entry.rif_id = neigh_info->intf_h;
     neighbor_entry.ip_address.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-    neighbor_entry.ip_address.addr.ip4 = neigh_info->ip_addr.ip.v4addr.s_addr;
+    neighbor_entry.ip_address.addr.ip4 =
+        htonl(neigh_info->ip_addr.ip.v4addr.s_addr);
 
     status = neigh_api->remove_neighbor_entry(&neighbor_entry);
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
@@ -476,9 +482,10 @@ switchlink_route_create(switchlink_db_route_info_t *route_info) {
     route_entry.vr_id = route_info->vrf_h;
     if (route_info->ip_addr.family == AF_INET) {
         route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-        route_entry.destination.addr.ip4 = route_info->ip_addr.ip.v4addr.s_addr;
+        route_entry.destination.addr.ip4 =
+            htonl(route_info->ip_addr.ip.v4addr.s_addr);
         route_entry.destination.mask.ip4 =
-            ipv4_prefix_len_to_mask(route_info->ip_addr.prefix_len);
+            htonl(ipv4_prefix_len_to_mask(route_info->ip_addr.prefix_len));
     } else {
         assert(route_info->ip_addr.family == AF_INET6);
         route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV6;
@@ -507,9 +514,10 @@ switchlink_route_delete(switchlink_db_route_info_t *route_info) {
     route_entry.vr_id = route_info->vrf_h;
     if (route_info->ip_addr.family == AF_INET) {
         route_entry.destination.addr_family = SAI_IP_ADDR_FAMILY_IPV4;
-        route_entry.destination.addr.ip4 = route_info->ip_addr.ip.v4addr.s_addr;
+        route_entry.destination.addr.ip4 =
+            htonl(route_info->ip_addr.ip.v4addr.s_addr);
         route_entry.destination.mask.ip4 =
-            ipv4_prefix_len_to_mask(route_info->ip_addr.prefix_len);
+            htonl(ipv4_prefix_len_to_mask(route_info->ip_addr.prefix_len));
     } else {
         assert(route_info->ip_addr.family == AF_INET6);
     }
@@ -527,7 +535,7 @@ switchlink_send_packet(char *buf, uint32_t buf_size, uint16_t port_id) {
     attr_list[0].id = SAI_HOSTIF_PACKET_TX_TYPE;
     attr_list[0].value.u32 = SAI_HOSTIF_TX_TYPE_PIPELINE_BYPASS;
     attr_list[1].id = SAI_HOSTIF_PACKET_EGRESS_PORT_OR_LAG;
-    attr_list[1].value.oid = s_port_list[port_id];
+    attr_list[1].value.oid = get_port_object(port_id);
 
     status = host_intf_api->send_packet(0, buf, buf_size, 2, attr_list);
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);
