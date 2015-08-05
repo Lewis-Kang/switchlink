@@ -68,7 +68,7 @@ switchlink_db_port_get_all_ports(uint16_t *num_ports,
 
 switchlink_db_status_t
 switchlink_db_port_get(char *name, uint16_t *port_id) {
-    int i;
+    uint16_t i;
     for(i = 0;
         i < sizeof(switchlink_db_port_map)/sizeof(switchlink_db_port_obj_t);
         i++) {
@@ -190,7 +190,7 @@ switchlink_db_mac_key_hash(switchlink_mac_addr_t mac_addr,
                            switchlink_handle_t bridge_h,
                            uint8_t *key, uint32_t *hash) {
     memset(key, 0, SWITCHLINK_MAC_KEY_LEN);
-    memcpy(&key[0], &bridge_h, min(sizeof(bridge_h), 8));
+    memcpy(&key[0], &bridge_h, min(sizeof(bridge_h), (uint32_t)8));
     memcpy(&key[8], mac_addr, 6);
     if (hash) {
         *hash = XXH32(key, SWITCHLINK_MAC_KEY_LEN, 0x98761234);

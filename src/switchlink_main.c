@@ -39,7 +39,7 @@ nl_sync_state() {
         RTM_GETROUTE
     };
 
-    static int msg_idx = 0;
+    static uint16_t msg_idx = 0;
     if (msg_idx < sizeof(msg_array)/sizeof(int)) {
         struct rtgenmsg rt_hdr = {
             .rtgen_family = AF_UNSPEC,
