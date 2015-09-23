@@ -498,8 +498,13 @@ switchlink_route_create(switchlink_db_route_info_t *route_info) {
 
     sai_attribute_t attr_list[1];
     memset(attr_list, 0, sizeof(attr_list));
-    attr_list[0].id = SAI_ROUTE_ATTR_NEXT_HOP_ID;
-    attr_list[0].value.oid = route_info->nhop_h;
+    if (route_info->nhop_h == g_cpu_rx_nhop_h) {
+        attr_list[0].id = SAI_ROUTE_ATTR_PACKET_ACTION;
+        attr_list[0].value.s32 = SAI_PACKET_ACTION_TRAP;
+    } else {
+        attr_list[0].id = SAI_ROUTE_ATTR_NEXT_HOP_ID;
+        attr_list[0].value.oid = route_info->nhop_h;
+    }
 
     status = route_api->create_route(&route_entry, 1, attr_list);
     return ((status == SAI_STATUS_SUCCESS) ? 0 : -1);

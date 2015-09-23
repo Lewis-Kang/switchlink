@@ -123,7 +123,9 @@ interface_create(switchlink_db_interface_info_t *intf)
         switchlink_db_interface_update(intf->ifindex, &ifinfo);
     }
 
-    switchlink_stp_state_update(intf);
+    if (intf->intf_type != SWITCHLINK_INTF_TYPE_L3) {
+        switchlink_stp_state_update(intf);
+    }
 }
 
 static void
@@ -140,9 +142,11 @@ interface_delete(switchlink_db_interface_info_t *intf) {
         switchlink_del_interface_from_bridge(intf, ifinfo.bridge_h);
     }
 
-    // clear stp state on interface
-    intf->stp_state = SWITCHLINK_STP_STATE_BLOCKING;
-    switchlink_stp_state_update(intf);
+    if (ifinfo.intf_type != SWITCHLINK_INTF_TYPE_L3) {
+        // clear stp state on interface
+        intf->stp_state = SWITCHLINK_STP_STATE_BLOCKING;
+        switchlink_stp_state_update(intf);
+    }
 
     // delete the interface
     switchlink_interface_delete(intf, ifinfo.intf_h);
